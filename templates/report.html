@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Spring Failure Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .summary-table {
+            width: 60%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .summary-table, .summary-table th, .summary-table td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+        .summary-table th {
+            background-color: #f2f2f2;
+        }
+        #data-container {
+            display: none;
+            margin-top: 20px;
+        }
+    </style>
+    <script>
+        function toggleTable() {
+            let dataContainer = document.getElementById("data-container");
+            let button = document.getElementById("toggleButton");
+
+            if (dataContainer.style.display === "none" || dataContainer.style.display === "") {
+                dataContainer.style.display = "block";
+                button.textContent = "Hide Summary Table";
+            } else {
+                dataContainer.style.display = "none";
+                button.textContent = "Show Summary Table";
+            }
+        }
+    </script>
+</head>
+<body>
+    <h2>Spring Failure Report</h2>
+
+    <!-- Filtering Form -->
+    <form method="GET" action="/report">
+    <label for="coach_code">Coach Code:</label>
+    <select name="Coach Code">
+        <option value="">All</option>
+        {% for option in dropdown_options.get("Coach Code", []) %}
+            <option value="{{ option }}">{{ option }}</option>
+        {% endfor %}
+    </select>
+
+    <label for="schedule">Schedule:</label>
+    <select name="Schedule">
+        <option value="">All</option>
+        {% for option in dropdown_options.get("Schedule", []) %}
+            <option value="{{ option }}">{{ option }}</option>
+        {% endfor %}
+    </select>
+
+    <label for="suspension_type">Secondary Suspension Type:</label>
+    <select name="Secondary Suspension Type">
+        <option value="">All</option>
+        {% for option in dropdown_options.get("Secondary Suspension Type", []) %}
+            <option value="{{ option }}">{{ option }}</option>
+        {% endfor %}
+    </select>
+
+    <label for="spring_type">Type of Spring:</label>
+    <select name="Type of Spring">
+        <option value="">All</option>
+        {% for option in dropdown_options.get("Type of Spring", []) %}
+            <option value="{{ option }}">{{ option }}</option>
+        {% endfor %}
+    </select>
+
+    <label for="failure_type">Type of Failure:</label>
+    <select name="Type of Failure">
+        <option value="">All</option>
+        {% for option in dropdown_options.get("Type of Failure", []) %}
+            <option value="{{ option }}">{{ option }}</option>
+        {% endfor %}
+    </select>
+
+    <label for="location">Location:</label>
+    <select name="Location">
+        <option value="">All</option>
+        {% for option in dropdown_options.get("Location", []) %}
+            <option value="{{ option }}">{{ option }}</option>
+        {% endfor %}
+    </select>
+
+    <label for="failure_reason">Reason for Failure:</label>
+    <select name="Reason for Failure">
+        <option value="">All</option>
+        {% for option in dropdown_options.get("Reason for Failure", []) %}
+            <option value="{{ option }}">{{ option }}</option>
+        {% endfor %}
+    </select>
+
+    <button type="submit">Filter Report</button>
+</form>
+
+
+    <!-- Display Chart -->
+    {% if chart_url %}
+        <img src="data:image/png;base64,{{ chart_url }}" alt="Failure Type Distribution">
+    {% else %}
+        <p>No data available.</p>
+    {% endif %}
+
+    <h3>Failure Summary</h3>
+    <button id="toggleButton" onclick="toggleTable()">Show Summary Table</button>
+    <div id="data-container">
+        {{ summary_html|safe }}
+    </div>
+   <h3>Filtered Data</h3>
+   <div>
+    {{ filtered_table_html | safe }}
+   </div>
+
+    <br>
+    <a href="/">Go Back</a>
+</body>
+</html>
