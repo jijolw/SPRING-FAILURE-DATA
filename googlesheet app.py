@@ -30,21 +30,7 @@ SPREADSHEET_ID = config["SPREADSHEET_ID"]
 
 # Google Sheets API Setup
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-# Define the required scope
-scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-
-# Check if credentials.json exists (for local use)
-if os.path.exists("credentials.json"):
-    print("Using local credentials.json file")
-    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
-else:
-    # If running on Render, use the environment variable
-    credentials_json = os.getenv("GOOGLE_CREDENTIALS")
-    if credentials_json:
-        print("Using credentials from environment variable")
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(credentials_json), scope)
-    else:
-        raise ValueError("No credentials found! Provide 'credentials.json' locally or set 'GOOGLE_CREDENTIALS' in Render.")
+creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SPREADSHEET_ID).sheet1  # Open the first sheet
 
@@ -157,30 +143,21 @@ def delete_entry():
     if not unique_id or not identifier_column:
         return jsonify({"success": False, "error": "Invalid identifier"})
 
-    # Fetch all data again to ensure latest updates
     data = sheet.get_all_records()
     df = pd.DataFrame(data)
 
     if identifier_column not in df.columns:
         return jsonify({"success": False, "error": "Invalid column"})
 
-    # Convert all values to strings to ensure matching
-    df[identifier_column] = df[identifier_column].astype(str).str.strip()
-    unique_id = str(unique_id).strip()
-
-    # Find the row index (Pandas index, not Google Sheets index)
-    row_index = df[df[identifier_column] == unique_id].index.tolist()
+    # Find the row index to delete
+    row_index = df.index[df[identifier_column] == unique_id].tolist()
 
     if not row_index:
-        return jsonify({"success": False, "error": f"Entry with {identifier_column}: {unique_id} not found"})
+        return jsonify({"success": False, "error": "Entry not found"})
 
-    google_sheets_row = row_index[0] + 2  # Adjusting for 1-based index + header
+    sheet.delete_rows(row_index[0] + 2)  # Google Sheets uses 1-based index + header row
 
-    try:
-        sheet.delete_rows(google_sheets_row)
-        return jsonify({"success": True, "message": f"Entry with {identifier_column}: {unique_id} deleted successfully!"})
-    except Exception as e:
-        return jsonify({"success": False, "error": f"Failed to delete entry: {str(e)}"})
+    return jsonify({"success": True, "message": f"Entry with {identifier_column}: {unique_id} deleted successfully!"})
 
 @app.route("/add_column", methods=["POST"])
 def add_column():
