@@ -33,20 +33,18 @@ scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 # Define the required scope
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 
-# Fetch Base64 encoded credentials from Render environment variable
-credentials_b64 = os.getenv("GOOGLE_CREDENTIALS")
-
-if not credentials_b64:
-    raise ValueError("No credentials found! Set 'GOOGLE_CREDENTIALS' in Render.")
-
-# Decode Base64 and parse JSON
-try:
-    credentials_json = json.loads(base64.b64decode(credentials_b64).decode("utf-8"))
-except json.JSONDecodeError:
-    raise ValueError("Failed to decode GOOGLE_CREDENTIALS. Ensure it's correctly encoded as Base64.")
-
-print("Using credentials from environment variable")
-creds = ServiceAccountCredentials.from_json_keyfile_dict(credentials_json, scope)
+# Check if credentials.json exists (for local use)
+if os.path.exists("credentials.json"):
+    print("Using local credentials.json file")
+    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+else:
+    # If running on Render, use the environment variable
+    credentials_json = os.getenv("GOOGLE_CREDENTIALS")
+    if credentials_json:
+        print("Using credentials from environment variable")
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(credentials_json), scope)
+    else:
+        raise ValueError("No credentials found! Provide 'credentials.json' locally or set 'GOOGLE_CREDENTIALS' in Render.")
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SPREADSHEET_ID).sheet1  # Open the first sheet
 
