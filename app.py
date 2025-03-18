@@ -33,20 +33,13 @@ scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 # Define the required scope
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 
-# Check if credentials.json exists (for local use)
-if os.path.exists("credentials.json"):
-    print("Using local credentials.json file")
-    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
-else:
-    # If running on Render, use the environment variable
-    credentials_json = os.getenv("GOOGLE_CREDENTIALS")
-    if credentials_json:
-        print("Using credentials from environment variable")
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(credentials_json), scope)
-    else:
-        raise ValueError("No credentials found! Provide 'credentials.json' locally or set 'GOOGLE_CREDENTIALS' in Render.")
-client = gspread.authorize(creds)
-sheet = client.open_by_key(SPREADSHEET_ID).sheet1  # Open the first sheet
+credentials_json = os.getenv("GOOGLE_CREDENTIALS")
+
+if not credentials_json:
+    raise ValueError("No credentials found! Set 'GOOGLE_CREDENTIALS' in Render.")
+
+print("Using credentials from environment variable")
+creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(credentials_json), scope)
 
 @app.route("/", methods=["GET", "POST"])
 def index():
