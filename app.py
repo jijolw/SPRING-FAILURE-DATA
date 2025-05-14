@@ -5,11 +5,17 @@ import base64
 import pandas as pd
 import gspread
 import matplotlib
-matplotlib.use('Agg')  # ✅ Fix: Use a non-GUI backend
+matplotlib.use('Agg')  # Use a non-GUI backend
 import matplotlib.pyplot as plt
-
-from flask import Flask, render_template, request, redirect, jsonify
+import seaborn as sns
+import numpy as np
+from datetime import datetime
+from collections import Counter
+from flask import Flask, render_template, request, redirect, jsonify, Response, send_file
 from oauth2client.service_account import ServiceAccountCredentials
+import csv
+from io import StringIO, BytesIO
+
 app = Flask(__name__)
 
 # Ensure options.json exists
@@ -30,23 +36,19 @@ SPREADSHEET_ID = config["SPREADSHEET_ID"]
 
 # Google Sheets API Setup
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-# Define the required scope
-scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 
-# Fetch Base64 encoded credentials from Render environment variable
-credentials_b64 = os.getenv("GOOGLE_CREDENTIALS")
-
-if not credentials_b64:
-    raise ValueError("No credentials found! Set 'GOOGLE_CREDENTIALS' in Render.")
-
-# Decode Base64 and parse JSON
-try:
-    credentials_json = json.loads(base64.b64decode(credentials_b64).decode("utf-8"))
-except json.JSONDecodeError:
-    raise ValueError("Failed to decode GOOGLE_CREDENTIALS. Ensure it's correctly encoded as Base64.")
-
-print("Using credentials from environment variable")
-creds = ServiceAccountCredentials.from_json_keyfile_dict(credentials_json, scope)
+# Check if credentials.json exists (for local use)
+if os.path.exists("credentials.json"):
+    print("Using local credentials.json file")
+    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+else:
+    # If running on Render, use the environment variable
+    credentials_json = os.getenv("GOOGLE_CREDENTIALS")
+    if credentials_json:
+        print("Using credentials from environment variable")
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(credentials_json), scope)
+    else:
+        raise ValueError("No credentials found! Provide 'credentials.json' locally or set 'GOOGLE_CREDENTIALS' in Render.")
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SPREADSHEET_ID).sheet1  # Open the first sheet
 
@@ -54,9 +56,17 @@ sheet = client.open_by_key(SPREADSHEET_ID).sheet1  # Open the first sheet
 def index():
     if request.method == "POST":
         form_data = request.form.to_dict(flat=False)
+        
+        # Check if this is a repeat submission
+        repeat_count = int(request.form.get("repeat_count", 1))
+        
         columns = sheet.row_values(1)
-        data = [", ".join(form_data.get(col, [""])) for col in columns]
-        sheet.append_row(data)
+        
+        # Process data for each repeat
+        for _ in range(repeat_count):
+            data = [", ".join(form_data.get(col, [""])) for col in columns]
+            sheet.append_row(data)
+        
         return redirect("/")
 
     # Read existing data from Google Sheets
@@ -69,14 +79,13 @@ def index():
 
     dropdown_fields = [
         "Coach Code", "Schedule", "Division", "Secondary Suspension Type",
-        "Type of Spring", "Colour of Spring", "Type of Failure", "Location", "Reason for Failure", "Remarks"
+        "Type of Spring", "Colour of Spring", "Type of Failure", "Location", 
+        "Reason for Failure", "Remarks", "POH Date", "MFG", "Maintenance Depot"
     ]
 
     for field in dropdown_fields:
         values_from_sheet = df[field].dropna().astype(str).unique().tolist() if field in df.columns else []
         stored_values = stored_options.get(field, [])  # Get stored values from options.json
-
-        # Load options.json first, then merge with Google Sheets values
         dropdown_options[field] = sorted(set(stored_values + values_from_sheet))  
 
     return render_template("index.html", columns=columns, dropdown_options=dropdown_options, data=data)
@@ -89,74 +98,166 @@ def report():
         df = pd.DataFrame(data)
 
         if df.empty:
-            return "<h2>No data available to generate the report.</h2><a href='/'>Go Back</a>"
+            return render_template("error.html", message="No data available to generate the report.")
 
         # Ensure required columns exist
         required_columns = [
-            "Coach Code", "Schedule", "Secondary Suspension Type",
-            "Type of Spring", "Type of Failure", "Location", "Reason for Failure"
+            "Coach Code", "Schedule", "Secondary Suspension Type", "Type of Spring",
+            "Type of Failure", "Location", "Reason for Failure", "POH Date", "MFG",
+            "Maintenance Depot", "Receipt Date"
         ]
+        
         for col in required_columns:
             if col not in df.columns:
-                df[col] = ""  # Add missing columns with empty values to prevent errors
+                df[col] = ""
 
-        # Get filter values from request arguments
-        filters = {
-            "Coach Code": request.args.get("Coach Code"),
-            "Schedule": request.args.get("Schedule"),
-            "Secondary Suspension Type": request.args.get("Secondary Suspension Type"),
-            "Type of Spring": request.args.get("Type of Spring"),
-            "Type of Failure": request.args.get("Type of Failure"),
-            "Location": request.args.get("Location"),
-            "Reason for Failure": request.args.get("Reason for Failure")
+        # Normalize data
+        for col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+
+        # Apply filters with sanitized keys
+        filters = {}
+        for col in required_columns:
+            if request.args.get(col.replace(" ", "_")):
+                filters[col] = request.args.get(col.replace(" ", "_")).strip()
+
+        filtered_df = df.copy()
+        for column, value in filters.items():
+            if value and column in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df[column] == value]
+
+        if filtered_df.empty:
+            return render_template(
+                "report.html",
+                charts={},
+                summary_tables={},
+                dropdown_options={col: sorted(df[col].dropna().unique().tolist()) for col in required_columns if col in df.columns},
+                filtered_table_html="<p>No data matches the selected filters.</p>",
+                applied_filters=filters,
+                filtered_df=pd.DataFrame(),
+                location_counts=pd.Series(),
+                failure_counts=pd.Series(),
+                coach_codes=pd.Series(),
+                reason_counts=pd.Series(),
+                current_date=datetime.now().strftime("%B %d, %Y %I:%M %p"),
+                insights={}
+            )
+
+        filtered_table_html = filtered_df.to_html(index=False, classes="filtered-data-table", border=1)
+
+        # Calculate counts
+        location_counts = filtered_df["Location"].value_counts()
+        failure_counts = filtered_df["Type of Failure"].value_counts()
+        coach_codes = filtered_df["Coach Code"].value_counts()
+        reason_counts = filtered_df["Reason for Failure"].value_counts()
+
+        # Prepare chart data as JSON
+        charts = {}
+        
+        # Failure Types Chart
+        charts["failure_types"] = {
+            "labels": failure_counts.index.tolist() if not failure_counts.empty else [],
+            "data": failure_counts.values.tolist() if not failure_counts.empty else [],
+            "type": "bar",
+            "title": "Failure Type Distribution"
         }
 
-        # Apply filters dynamically
-        for column, value in filters.items():
-            if value and value in df[column].values:
-                df = df[df[column] == value]
+        # Location Distribution Chart
+        charts["location_distribution"] = {
+            "labels": location_counts.index.tolist() if not location_counts.empty else [],
+            "data": location_counts.values.tolist() if not location_counts.empty else [],
+            "type": "pie",
+            "title": "Failure by Location"
+        }
 
-        if df.empty:
-            return "<h2>No data available after filtering.</h2><a href='/'>Go Back</a>"
+        # Reason Distribution Chart
+        charts["reason_distribution"] = {
+            "labels": reason_counts.nlargest(7).index.tolist() if not reason_counts.empty else [],
+            "data": reason_counts.nlargest(7).values.tolist() if not reason_counts.empty else [],
+            "type": "bar",
+            "title": "Top Reasons for Failure",
+            "horizontal": True
+        }
 
-        # Convert entire filtered DataFrame to an HTML table
-        filtered_table_html = df.to_html(index=False, classes="filtered-data-table", border=1)
+        # Timeline Chart
+        if "Receipt Date" in filtered_df.columns and not filtered_df["Receipt Date"].isna().all():
+            try:
+                filtered_df["Receipt Date"] = pd.to_datetime(filtered_df["Receipt Date"], errors='coerce')
+                filtered_df = filtered_df.dropna(subset=["Receipt Date"])
+                if not filtered_df.empty:
+                    date_counts = filtered_df.groupby(filtered_df["Receipt Date"].dt.date).size()
+                    charts["time_trend"] = {
+                        "labels": [d.strftime("%Y-%m-%d") for d in date_counts.index] if not date_counts.empty else [],
+                        "data": date_counts.values.tolist() if not date_counts.empty else [],
+                        "type": "line",
+                        "title": "Failure Trend Over Time"
+                    }
+            except Exception as e:
+                print(f"Error creating timeline chart: {str(e)}")
 
-        # Count failures by type
-        failure_counts = df["Type of Failure"].value_counts()
+        # Heatmap Chart
+        if len(filtered_df) > 5:
+            try:
+                cross_data = pd.crosstab(filtered_df["Coach Code"], filtered_df["Type of Failure"])
+                charts["heatmap"] = {
+                    "xLabels": cross_data.columns.tolist() if not cross_data.empty else [],
+                    "yLabels": cross_data.index.tolist() if not cross_data.empty else [],
+                    "data": cross_data.values.tolist() if not cross_data.empty else [],
+                    "type": "matrix",
+                    "title": "Coach Code vs Failure Type"
+                }
+            except Exception as e:
+                print(f"Error creating heatmap: {str(e)}")
 
-        # Convert to Summary Table
-        summary_html = failure_counts.reset_index().to_html(index=False, classes="summary-table", border=1)
+        # Summary Tables
+        summary_tables = {
+            "failure_types": failure_counts.reset_index().rename(
+                columns={"index": "Type of Failure", "Type of Failure": "Count"}
+            ).to_html(index=False, classes="summary-table", border=1) if not failure_counts.empty else "<p>No failure types data available.</p>",
+            "locations": location_counts.reset_index().rename(
+                columns={"index": "Location", "Location": "Count"}
+            ).to_html(index=False, classes="summary-table", border=1) if not location_counts.empty else "<p>No locations data available.</p>",
+            "reasons": reason_counts.reset_index().rename(
+                columns={"index": "Reason for Failure", "Reason for Failure": "Count"}
+            ).to_html(index=False, classes="summary-table", border=1) if not reason_counts.empty else "<p>No reasons data available.</p>"
+        }
 
-        # Generate Chart
-        plt.figure(figsize=(8, 5))
-        failure_counts.plot(kind="bar", color="skyblue", edgecolor="black")
-        plt.xlabel("Type of Failure")
-        plt.ylabel("Count")
-        plt.title("Filtered Failure Type Distribution")
-        plt.xticks(rotation=45)
+        dropdown_options = {col: sorted(df[col].dropna().unique().tolist())
+                           for col in required_columns if col in df.columns}
 
-        # Convert plot to PNG image
-        img = io.BytesIO()
-        plt.savefig(img, format="png")
-        img.seek(0)
-        plt.close()
-        chart_url = base64.b64encode(img.getvalue()).decode()
+        # Insights
+        insights = {
+            "common_failure": failure_counts.index[0] if not failure_counts.empty else "N/A",
+            "common_location": location_counts.index[0] if not location_counts.empty else "N/A",
+            "common_reason": reason_counts.index[0] if not reason_counts.empty else "N/A",
+            "failure_percentage": round((len(filtered_df) / len(df) * 100), 2) if len(df) > 0 else 0,
+            "top_coach_code": coach_codes.index[0] if not coach_codes.empty else "N/A"
+        }
 
-        # Load dropdown options dynamically
-        dropdown_options = {col: sorted(df[col].dropna().astype(str).unique().tolist()) for col in required_columns}
-
-        return render_template("report.html", chart_url=chart_url, summary_html=summary_html, dropdown_options=dropdown_options, filtered_table_html=filtered_table_html)
+        return render_template(
+            "report.html",
+            charts=charts,
+            summary_tables=summary_tables,
+            dropdown_options=dropdown_options,
+            filtered_table_html=filtered_table_html,
+            applied_filters=filters,
+            filtered_df=filtered_df,
+            location_counts=location_counts,
+            failure_counts=failure_counts,
+            coach_codes=coach_codes,
+            reason_counts=reason_counts,
+            current_date=datetime.now().strftime("%B %d, %Y %I:%M %p"),
+            insights=insights
+        )
 
     except Exception as e:
-        return f"<h2>Error Occurred: {str(e)}</h2><a href='/'>Go Back</a>"
-
+        return render_template("error.html", message=f"Error occurred: {str(e)}")
 @app.route("/delete_entry", methods=["POST"])
 def delete_entry():
     unique_id = request.json.get("unique_id")
-    identifier_column = request.json.get("identifier_column")
+    identifier_column = request.json.get("identifier_column", "Coach No")
 
-    if not unique_id or not identifier_column:
+    if not unique_id:
         return jsonify({"success": False, "error": "Invalid identifier"})
 
     # Fetch all data again to ensure latest updates
@@ -197,6 +298,7 @@ def add_column():
         sheet.insert_row(columns, 1)
     
     return jsonify({"success": True, "message": f"Column '{new_column}' added successfully!"})
+
 @app.route("/add_value", methods=["POST"])
 def add_value():
     new_value = request.json.get("value")
@@ -229,6 +331,101 @@ def delete_value():
             json.dump(stored_options, f, indent=4)
 
     return jsonify({"success": True, "message": f"Value '{value_to_delete}' removed successfully!"})
+
+@app.route("/duplicate_entry", methods=["POST"])
+def duplicate_entry():
+    entry_id = request.json.get("entry_id")
+    identifier_column = request.json.get("identifier_column", "Coach No")
+    
+    if not entry_id:
+        return jsonify({"success": False, "error": "Invalid entry ID"})
+    
+    data = sheet.get_all_records()
+    df = pd.DataFrame(data)
+    
+    if identifier_column not in df.columns:
+        return jsonify({"success": False, "error": "Invalid column"})
+    
+    # Find the entry to duplicate
+    df[identifier_column] = df[identifier_column].astype(str).str.strip()
+    entry_id = str(entry_id).strip()
+    
+    entry = df[df[identifier_column] == entry_id]
+    
+    if entry.empty:
+        return jsonify({"success": False, "error": f"Entry with {identifier_column}: {entry_id} not found"})
+    
+    # Get the row to duplicate
+    columns = sheet.row_values(1)
+    row_to_duplicate = [entry.iloc[0].get(col, "") for col in columns]
+    
+    # Add the duplicated row
+    sheet.append_row(row_to_duplicate)
+    
+    return jsonify({"success": True, "message": f"Entry duplicated successfully!"})
+
+@app.route("/export_report", methods=["GET"])
+def export_report():
+    try:
+        # Fetch data from Google Sheets
+        data = sheet.get_all_records()
+        df = pd.DataFrame(data)
+        if df.empty:
+            return render_template("error.html", message="No data available to export.")
+
+        # Ensure required columns exist
+        required_columns = [
+            "Coach Code", "Schedule", "Secondary Suspension Type", "Type of Spring",
+            "Type of Failure", "Location", "Reason for Failure", "POH Date", "MFG",
+            "Maintenance Depot", "Receipt Date"
+        ]
+        for col in required_columns:
+            if col not in df.columns:
+                df[col] = ""
+        for col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+
+        # Apply filters
+        filters = {col: request.args.get(col.replace(" ", "_")).strip() for col in required_columns if request.args.get(col.replace(" ", "_"))}
+        filtered_df = df.copy()
+        for column, value in filters.items():
+            if value and column in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df[column] == value]
+
+        if filtered_df.empty:
+            return render_template("error.html", message="No data matches the selected filters for export.")
+
+        export_format = request.args.get("format", "csv")
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+        if export_format == "csv":
+            output = StringIO()
+            writer = csv.writer(output)
+            writer.writerow(filtered_df.columns)
+            for _, row in filtered_df.iterrows():
+                writer.writerow(row.values)
+            output.seek(0)
+            return Response(
+                output.getvalue(),
+                mimetype="text/csv",
+                headers={"Content-Disposition": f"attachment;filename=report_{timestamp}.csv"}
+            )
+        elif export_format == "xlsx":
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                filtered_df.to_excel(writer, index=False, sheet_name="Report")
+            output.seek(0)
+            return send_file(
+                output,
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                download_name=f"report_{timestamp}.xlsx",
+                as_attachment=True
+            )
+        else:
+            return render_template("error.html", message="Unsupported export format.")
+
+    except Exception as e:
+        return render_template("error.html", message=f"Error occurred during export: {str(e)}")
 
 if __name__ == "__main__":
     app.run(debug=True)

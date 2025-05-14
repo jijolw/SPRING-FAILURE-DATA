@@ -50,5 +50,11 @@
     ],
     "Type of Failure": [
         "CORROSION"
+    ],
+    "MFG": [
+        "ICF"
+    ],
+    "Type of Spring": [
+        "SECONDARY OUTER"
     ]
 }
