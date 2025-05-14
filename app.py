@@ -1,8 +1,22 @@
 import os
 import json
+import io
 import base64
+import pandas as pd
 import gspread
+import matplotlib
+matplotlib.use('Agg')  # Use a non-GUI backend
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+from datetime import datetime
+from collections import Counter
+from flask import Flask, render_template, request, redirect, jsonify, Response, send_file
 from oauth2client.service_account import ServiceAccountCredentials
+import csv
+from io import StringIO, BytesIO
+
+app = Flask(__name__)
 
 # Google Sheets API Setup
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
