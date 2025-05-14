@@ -35,6 +35,7 @@ with open("config.json") as config_file:
 SPREADSHEET_ID = config["SPREADSHEET_ID"]
 
 # Google Sheets API Setup
+# Google Sheets API Setup
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
 # Check if credentials.json exists (for local use)
@@ -43,13 +44,15 @@ if os.path.exists("credentials.json"):
     creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
 else:
     # If running on Render, use the environment variable
-    credentials_json = os.getenv("GOOGLE_CREDENTIALS")
-    if credentials_json:
+    credentials_json_base64 = os.getenv("GOOGLE_CREDENTIALS")
+    
+    if credentials_json_base64:
         print("Using credentials from environment variable")
+        # Decode from base64
+        credentials_json = base64.b64decode(credentials_json_base64).decode("utf-8")
         creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(credentials_json), scope)
     else:
-        raise ValueError("No credentials found! Provide 'credentials.json' locally or set 'GOOGLE_CREDENTIALS' in Render.")
-client = gspread.authorize(creds)
+        raise ValueError("No credentials found! Provide 'credentials.json' locally or set 'GOOGLE_CREDENTIALS' in Render.")client = gspread.authorize(creds)
 sheet = client.open_by_key(SPREADSHEET_ID).sheet1  # Open the first sheet
 
 @app.route("/", methods=["GET", "POST"])
