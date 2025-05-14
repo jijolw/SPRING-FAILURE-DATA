@@ -1,22 +1,11 @@
 import os
 import json
-import io
 import base64
-import pandas as pd
 import gspread
-import matplotlib
-matplotlib.use('Agg')  # Use a non-GUI backend
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-from datetime import datetime
-from collections import Counter
-from flask import Flask, render_template, request, redirect, jsonify, Response, send_file
 from oauth2client.service_account import ServiceAccountCredentials
-import csv
-from io import StringIO, BytesIO
 
-app = Flask(__name__)
+# Google Sheets API Setup
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
 # Ensure options.json exists
 OPTIONS_FILE = "options.json"
@@ -28,31 +17,25 @@ if not os.path.exists(OPTIONS_FILE):
 with open(OPTIONS_FILE, "r") as f:
     stored_options = json.load(f)
 
-# Load Google Sheets credentials
+# Load configuration from config.json
 with open("config.json") as config_file:
     config = json.load(config_file)
 
 SPREADSHEET_ID = config["SPREADSHEET_ID"]
 
-# Google Sheets API Setup
-# Google Sheets API Setup
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+# Check if the environment variable for Google credentials is set
+credentials_json_base64 = os.getenv("GOOGLE_CREDENTIALS")
 
-# Check if credentials.json exists (for local use)
-if os.path.exists("credentials.json"):
-    print("Using local credentials.json file")
-    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+if credentials_json_base64:
+    print("Using credentials from environment variable")
+    # Decode from base64
+    credentials_json = base64.b64decode(credentials_json_base64).decode("utf-8")
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(credentials_json), scope)
+    client = gspread.authorize(creds)
 else:
-    # If running on Render, use the environment variable
-    credentials_json_base64 = os.getenv("GOOGLE_CREDENTIALS")
-    
-    if credentials_json_base64:
-        print("Using credentials from environment variable")
-        # Decode from base64
-        credentials_json = base64.b64decode(credentials_json_base64).decode("utf-8")
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(credentials_json), scope)
-    else:
-        raise ValueError("No credentials found! Provide 'credentials.json' locally or set 'GOOGLE_CREDENTIALS' in Render.")client = gspread.authorize(creds)
+    raise ValueError("No credentials found! Set 'GOOGLE_CREDENTIALS' in Render or your environment variables.")
+
+# Open the Google Sheets document
 sheet = client.open_by_key(SPREADSHEET_ID).sheet1  # Open the first sheet
 
 @app.route("/", methods=["GET", "POST"])
