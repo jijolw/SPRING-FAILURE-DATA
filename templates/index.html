@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Railway Spring Failure Management System</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Bootstrap CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Custom styles -->
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2c3e50;
+            --accent-color: #e74c3c;
+            --light-color: #ecf0f1;
+            --dark-color: #34495e;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+            border-radius: 0 0 15px 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .form-container {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+        
+        .form-title {
+            border-left: 5px solid var(--primary-color);
+            padding-left: 15px;
+            margin-bottom: 25px;
+            color: var(--secondary-color);
+        }
+        
+        .form-control, .form-select {
+            border-radius: 0.5rem;
+            border: 1px solid #ced4da;
+            padding: 0.6rem 1rem;
+            margin-bottom: 1rem;
+            transition: all 0.3s;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+        }
+        
+        .btn-primary {
+            background-color: var(--primary-color);
+            border: none;
+            border-radius: 0.5rem;
+            padding: 0.6rem 1.5rem;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .btn-secondary {
+            background-color: var(--secondary-color);
+            border: none;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #1a252f;
+        }
+        
+        .btn-danger {
+            background-color: var(--accent-color);
+            border: none;
+        }
+        
+        .btn-danger:hover {
+            background-color: #c0392b;
+        }
+        
+        .table-container {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            padding: 25px;
+            margin-bottom: 30px;
+            overflow-x: auto;
+        }
+        
+        .table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 0;
+        }
+        
+        .table th {
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 500;
+        }
+        
+        .table td {
+            padding: 12px;
+            border-bottom: 1px solid #f2f2f2;
+        }
+        
+        .table tr:hover {
+            background-color: rgba(52, 152, 219, 0.05);
+        }
+        
+        .action-btn {
+            padding: 0.3rem 0.6rem;
+            margin: 0 0.2rem;
+            font-size: 0.8rem;
+        }
+        
+        .dropdown-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .add-button {
+            height: 38px;
+            width: 38px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+        
+        .report-link {
+            display: block;
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            background-color: var(--light-color);
+            color: var(--dark-color);
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .report-link:hover {
+            background-color: var(--dark-color);
+            color: var(--light-color);
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 20px 0;
+            margin-top: 30px;
+            color: #6c757d;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        /* Animation for newly added rows */
+        @keyframes highlight {
+            0% { background-color: rgba(52, 152, 219, 0.2); }
+            100% { background-color: transparent; }
+        }
+        
+        .highlight {
+            animation: highlight 2s ease-in-out;
+        }
+        
+        /* Toast notification styling */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        
+        .toast {
+            background-color: white;
+            color: #333;
+            border-radius: 5px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            margin-bottom: 10px;
+            width: 300px;
+        }
+        
+        .toast-header {
+            background-color: var(--primary-color);
+            color: white;
+            border-radius: 5px 5px 0 0;
+        }
+        
+        .repeat-entry-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin: 15px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid var(--primary-color);
+        }
+        
+        .repeat-label {
+            font-weight: 600;
+            margin-bottom: 0;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .dropdown-container {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .add-button {
+                margin-top: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Toast Notifications Container -->
+    <div class="toast-container"></div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="row">
+                <div class="col-lg-12 text-center">
+                    <h1><i class="fas fa-train me-2"></i>Railway Spring Failure Management System</h1>
+                    <p class="lead">Track, manage, and analyze coach spring failures efficiently</p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Form Section -->
+        <div class="form-container">
+            <h3 class="form-title">Entry Form</h3>
+            <form method="post" id="entryForm">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="receiptDate" class="form-label">Receipt Date:</label>
+                            <input type="date" class="form-control" id="receiptDate" name="Receipt Date" required>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="coachNo" class="form-label">Coach Number:</label>
+                            <input type="text" class="form-control" id="coachNo" name="Coach No" required>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    {% for column in columns %}
+                        {% if column not in ["Receipt Date", "Coach No"] %}
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ column | replace(' ', '_') }}" class="form-label">{{ column }}:</label>
+                                    <div class="dropdown-container">
+                                        <select id="{{ column | replace(' ', '_') }}" name="{{ column }}" class="form-select">
+                                            <option value="">Select {{ column }}</option>
+                                            {% for option in dropdown_options.get(column, []) %}
+                                                <option value="{{ option }}">{{ option }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <div class="input-group">
+                                            <input type="text" id="new{{ column | replace(' ', '_') }}" class="form-control" placeholder="Add new">
+                                            <button type="button" class="btn btn-primary add-button" onclick="addDropdownOption('{{ column | replace(' ', '_') }}', 'new{{ column | replace(' ', '_') }}')">
+                                                <i class="fas fa-plus"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+
+                <!-- Repeat Entry Option -->
+                <div class="repeat-entry-container">
+                    <label for="repeatCount" class="repeat-label">Repeat this entry:</label>
+                    <div class="input-group" style="width: 150px;">
+                        <input type="number" class="form-control" id="repeatCount" name="repeat_count" min="1" value="1">
+                        <span class="input-group-text">times</span>
+                    </div>
+                    <span class="text-muted"><i class="fas fa-info-circle me-1"></i>Use for multiple failures in the same bogie</span>
+                </div>
+
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <button type="reset" class="btn btn-secondary me-md-2">
+                        <i class="fas fa-undo me-1"></i>Reset
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-1"></i>Submit Entry
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Add New Column Section -->
+        <div class="form-container">
+            <h3 class="form-title">Add New Column</h3>
+            <div class="row">
+                <div class="col-md-8">
+                    <div class="input-group mb-3">
+                        <input type="text" id="new_column" class="form-control" placeholder="Enter new column name">
+                        <button class="btn btn-primary" type="button" onclick="addColumn()">
+                            <i class="fas fa-plus me-1"></i>Add Column
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Table Section -->
+        <div class="table-container">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h3 class="form-title m-0">Data Records</h3>
+                <button id="toggleDataButton" class="btn btn-outline-primary" onclick="toggleDataTable()">
+                    <i class="fas fa-table me-1"></i>Show Data
+                </button>
+            </div>
+            
+            <div id="data-container" style="display: none;">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                {% for column in columns %}
+                                    <th>{{ column }}</th>
+                                {% endfor %}
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in data %}
+                            <tr>
+                                {% for column in columns %}
+                                    <td>{{ row[column] }}</td>
+                                {% endfor %}
+                                <td>
+                                    <button class="btn btn-sm btn-info action-btn" onclick="duplicateEntry('{{ row['Coach No'] }}')">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-danger action-btn" onclick="deleteEntry('{{ row['Coach No'] }}')">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Report Link -->
+        <a href="/report" class="report-link">
+            <i class="fas fa-chart-bar me-2"></i>View Detailed Reports and Analytics
+        </a>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Railway Spring Failure Management System &copy; 2025</p>
+        </footer>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom JS -->
+    <script>
+        function showToast(message, type = 'success') {
+            const toastContainer = document.querySelector('.toast-container');
+            
+            const toast = document.createElement('div');
+            toast.className = 'toast show';
+            toast.setAttribute('role', 'alert');
+            toast.setAttribute('aria-live', 'assertive');
+            toast.setAttribute('aria-atomic', 'true');
+            
+            const iconClass = type === 'success' ? 'text-success fa-check-circle' : 'text-danger fa-exclamation-circle';
+            
+            toast.innerHTML = `
+                <div class="toast-header">
+                    <i class="fas ${iconClass} me-2"></i>
+                    <strong class="me-auto">${type === 'success' ? 'Success' : 'Error'}</strong>
+                    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+                <div class="toast-body">
+                    ${message}
+                </div>
+            `;
+            
+            toastContainer.appendChild(toast);
+            
+            // Remove toast after 5 seconds
+            setTimeout(() => {
+                toast.remove();
+            }, 5000);
+        }
+
+        function toggleDataTable() {
+            let tableContainer = document.getElementById("data-container");
+            let button = document.getElementById("toggleDataButton");
+            
+            if (tableContainer.style.display === "none" || tableContainer.style.display === "") {
+                tableContainer.style.display = "block";
+                button.innerHTML = '<i class="fas fa-table-columns me-1"></i>Hide Data';
+            } else {
+                tableContainer.style.display = "none";
+                button.innerHTML = '<i class="fas fa-table me-1"></i>Show Data';
+            }
+        }
+
+        function addDropdownOption(selectId, inputId) {
+            let select = document.getElementById(selectId);
+            let input = document.getElementById(inputId);
+            let value = input.value.trim();
+
+            if (!value) {
+                showToast('Please enter a value', 'error');
+                return;
+            }
+
+            if (Array.from(select.options).some(option => option.value === value)) {
+                showToast('This value already exists', 'error');
+                return;
+            }
+
+            fetch("/add_value", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ dropdown: selectId.replace(/_/g, " "), value: value })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    let option = new Option(value, value);
+                    select.add(option);
+                    select.value = value;  // Select the newly added option
+                    input.value = "";
+                    showToast('Value added successfully!');
+                } else {
+                    showToast(`Failed to add value: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                showToast(`Error: ${error}`, 'error');
+            });
+        }
+
+        function deleteEntry(uniqueId) {
+            if (!confirm("Are you sure you want to delete this entry?")) return;
+
+            fetch("/delete_entry", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ unique_id: uniqueId, identifier_column: "Coach No" })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('Entry deleted successfully!');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showToast(`Failed to delete: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                showToast(`Error: ${error}`, 'error');
+            });
+        }
+        
+        function duplicateEntry(entryId) {
+            fetch("/duplicate_entry", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ entry_id: entryId, identifier_column: "Coach No" })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('Entry duplicated successfully!');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showToast(`Failed to duplicate: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                showToast(`Error: ${error}`, 'error');
+            });
+        }
+
+        function addColumn() {
+            let columnName = document.getElementById("new_column").value.trim();
+
+            if (!columnName) {
+                showToast('Please enter a column name', 'error');
+                return;
+            }
+
+            fetch("/add_column", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ column_name: columnName })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('Column added successfully!');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showToast(`Failed to add column: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                showToast(`Error: ${error}`, 'error');
+            });
+        }
+
+        // Add highlight effect to newly added entries
+        document.addEventListener('DOMContentLoaded', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('added')) {
+                const rows = document.querySelectorAll('tbody tr');
+                if (rows.length > 0) {
+                    rows[0].classList.add('highlight');
+                }
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Railway Spring Failure Report</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <!-- Custom styles -->
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2c3e50;
+            --accent-color: #e74c3c;
+            --light-color: #ecf0f1;
+            --dark-color: #34495e;
+            --success-color: #2ecc71;
+            --warning-color: #f39c12;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+            border-radius: 0 0 15px 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .report-container {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            border-left: 5px solid var(--primary-color);
+            padding-left: 15px;
+            margin-bottom: 25px;
+            color: var(--secondary-color);
+        }
+        
+        .chart-container {
+            background-color: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            position: relative;
+            height: 400px;
+        }
+        
+        .chart-canvas {
+            max-height: 350px;
+            width: 100%;
+        }
+        
+        .filters-container {
+            background-color: var(--light-color);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .form-control, .form-select {
+            border-radius: 0.5rem;
+            border: 1px solid #ced4da;
+            padding: 0.6rem 1rem;
+            margin-bottom: 1rem;
+            transition: all 0.3s;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+        }
+        
+        .btn-primary {
+            background-color: var(--primary-color);
+            border: none;
+            border-radius: 0.5rem;
+            padding: 0.6rem 1.5rem;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .btn-secondary {
+            background-color: var(--secondary-color);
+            border: none;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #1a252f;
+        }
+        
+        .card {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s;
+            margin-bottom: 25px;
+            overflow: hidden;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        }
+        
+        .card-header {
+            background-color: var(--secondary-color);
+            color: white;
+            font-weight: 500;
+            padding: 15px;
+            border-radius: 10px 10px 0 0 !important;
+        }
+        
+        .card-body {
+            padding: 20px;
+        }
+        
+        .summary-table, .filtered-data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .summary-table>First, I notice that the heatmap chart in your Flask code is configured to use a `matrix` type, which requires the `chartjs-chart-matrix` plugin for Chart.js. However, neither your original `report.html` nor the updated version includes this plugin, which could contribute to the charts not rendering correctly, especially for the heatmap. Additionally, the `Undefined` error suggests that some chart data (e.g., `labels` or `data`) is not being properly initialized, likely due to empty or invalid data from the Google Sheets.
+
+### Root Cause of the Error
+The error `Object of type Undefined is not JSON serializable` occurs in the `/report` route when the `charts` dictionary contains invalid or undefined data that Jinja2's `tojson` filter cannot serialize. This is likely happening because:
+1. **Empty or Missing Data**: The `filtered_df` DataFrame is empty, or required columns (e.g., `Type of Failure`, `Location`, `Receipt Date`) are missing or contain invalid values, leading to empty or `None` values in `charts`.
+2. **Timeline Chart**: The `Receipt Date` column may have invalid or missing dates, causing `pd.to_datetime` to produce `NaT` values, which may not be handled correctly.
+3. **Heatmap Chart**: The `crosstab` operation for the heatmap may produce an empty or malformed result if `filtered_df` has insufficient data (`len(filtered_df) <= 5`).
+4. **Jinja2 Rendering**: The template attempts to serialize `charts` without ensuring all entries are valid, leading to `Undefined` objects.
+
+### Fixes and Updates
+To resolve the error and ensure charts render correctly, we need to:
+1. **Update the Flask `/report` Route**:
+   - Add robust checks to ensure `labels` and `data` are always valid (e.g., empty lists instead of `None`).
+   - Skip charts with insufficient or invalid data (e.g., heatmap, timeline).
+   - Log errors to identify problematic data.
+2. **Update `report.html`**:
+   - Include the `chartjs-chart-matrix` plugin for the heatmap chart.
+   - Add conditional checks to render charts only if they have valid data.
+   - Improve error handling to display messages when data is missing.
+3. **Debugging**: Verify Google Sheets data and add logging to pinpoint the issue.
+
+### Updated Flask `/report` Route
+Below is the corrected `/report` route with added checks to prevent `Undefined` objects and ensure JSON-serializable data.
+
+```python
+@app.route("/report", methods=["GET"])
+def report():
+    try:
+        # Fetch data from Google Sheets
+        data = sheet.get_all_records()
+        df = pd.DataFrame(data)
+
+        if df.empty:
+            return render_template("error.html", message="No data available to generate the report.")
+
+        # Ensure required columns exist
+        required_columns = [
+            "Coach Code", "Schedule", "Secondary Suspension Type", "Type of Spring",
+            "Type of Failure", "Location", "Reason for Failure", "POH Date", "MFG",
+            "Maintenance Depot", "Receipt Date"
+        ]
+        
+        for col in required_columns:
+            if col not in df.columns:
+                df[col] = ""
+
+        # Normalize data
+        for col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+
+        # Apply filters with sanitized keys
+        filters = {}
+        for col in required_columns:
+            if request.args.get(col.replace(" ", "_")):
+                filters[col] = request.args.get(col.replace(" ", "_")).strip()
+
+        filtered_df = df.copy()
+        for column, value in filters.items():
+            if value and column in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df[column] == value]
+
+        if filtered_df.empty:
+            return render_template(
+                "report.html",
+                charts={},
+                summary_tables={},
+                dropdown_options={col: sorted(df[col].dropna().unique().tolist()) for col in required_columns if col in df.columns},
+                filtered_table_html="<p>No data matches the selected filters.</p>",
+                applied_filters=filters,
+                filtered_df=pd.DataFrame(),
+                location_counts=pd.Series(),
+                failure_counts=pd.Series(),
+                coach_codes=pd.Series(),
+                reason_counts=pd.Series(),
+                current_date=datetime.now().strftime("%B %d, %Y %I:%M %p"),
+                insights={}
+            )
+
+        filtered_table_html = filtered_df.to_html(index=False, classes="filtered-data-table", border=1)
+
+        # Calculate counts
+        location_counts = filtered_df["Location"].value_counts()
+        failure_counts = filtered_df["Type of Failure"].value_counts()
+        coach_codes = filtered_df["Coach Code"].value_counts()
+        reason_counts = filtered_df["Reason for Failure"].value_counts()
+
+        # Prepare chart data as JSON
+        charts = {}
+        
+        # Failure Types Chart
+        charts["failure_types"] = {
+            "labels": failure_counts.index.tolist() if not failure_counts.empty else [],
+            "data": failure_counts.values.tolist() if not failure_counts.empty else [],
+            "type": "bar",
+            "title": "Failure Type Distribution"
+        }
+
+        # Location Distribution Chart
+        charts["location_distribution"] = {
+            "labels": location_counts.index.tolist() if not location_counts.empty else [],
+            "data": location_counts.values.tolist() if not location_counts.empty else [],
+            "type": "pie",
+            "title": "Failure by Location"
+        }
+
+        # Reason Distribution Chart
+        charts["reason_distribution"] = {
+            "labels": reason_counts.nlargest(7).index.tolist() if not reason_counts.empty else [],
+            "data": reason_counts.nlargest(7).values.tolist() if not reason_counts.empty else [],
+            "type": "bar",
+            "title": "Top Reasons for Failure",
+            "horizontal": True
+        }
+
+        # Timeline Chart
+        if "Receipt Date" in filtered_df.columns and not filtered_df["Receipt Date"].isna().all():
+            try:
+                filtered_df["Receipt Date"] = pd.to_datetime(filtered_df["Receipt Date"], errors='coerce')
+                filtered_df = filtered_df.dropna(subset=["Receipt Date"])
+                if not filtered_df.empty:
+                    date_counts = filtered_df.groupby(filtered_df["Receipt Date"].dt.date).size()
+                    charts["time_trend"] = {
+                        "labels": [d.strftime("%Y-%m-%d") for d in date_counts.index] if not date_counts.empty else [],
+                        "data": date_counts.values.tolist() if not date_counts.empty else [],
+                        "type": "line",
+                        "title": "Failure Trend Over Time"
+                    }
+            except Exception as e:
+                print(f"Error creating timeline chart: {str(e)}")
+
+        # Heatmap Chart
+        if len(filtered_df) > 5:
+            try:
+                cross_data = pd.crosstab(filtered_df["Coach Code"], filtered_df["Type of Failure"])
+                charts["heatmap"] = {
+                    "xLabels": cross_data.columns.tolist() if not cross_data.empty else [],
+                    "yLabels": cross_data.index.tolist() if not cross_data.empty else [],
+                    "data": cross_data.values.tolist() if not cross_data.empty else [],
+                    "type": "matrix",
+                    "title": "Coach Code vs Failure Type"
+                }
+            except Exception as e:
+                print(f"Error creating heatmap: {str(e)}")
+
+        # Summary Tables
+        summary_tables = {
+            "failure_types": failure_counts.reset_index().rename(
+                columns={"index": "Type of Failure", "Type of Failure": "Count"}
+            ).to_html(index=False, classes="summary-table", border=1) if not failure_counts.empty else "<p>No failure types data available.</p>",
+            "locations": location_counts.reset_index().rename(
+                columns={"index": "Location", "Location": "Count"}
+            ).to_html(index=False, classes="summary-table", border=1) if not location_counts.empty else "<p>No locations data available.</p>",
+            "reasons": reason_counts.reset_index().rename(
+                columns={"index": "Reason for Failure", "Reason for Failure": "Count"}
+            ).to_html(index=False, classes="summary-table", border=1) if not reason_counts.empty else "<p>No reasons data available.</p>"
+        }
+
+        dropdown_options = {col: sorted(df[col].dropna().unique().tolist())
+                           for col in required_columns if col in df.columns}
+
+        # Insights
+        insights = {
+            "common_failure": failure_counts.index[0] if not failure_counts.empty else "N/A",
+            "common_location": location_counts.index[0] if not location_counts.empty else "N/A",
+            "common_reason": reason_counts.index[0] if not reason_counts.empty else "N/A",
+            "failure_percentage": round((len(filtered_df) / len(df) * 100), 2) if len(df) > 0 else 0,
+            "top_coach_code": coach_codes.index[0] if not coach_codes.empty else "N/A"
+        }
+
+        return render_template(
+            "report.html",
+            charts=charts,
+            summary_tables=summary_tables,
+            dropdown_options=dropdown_options,
+            filtered_table_html=filtered_table_html,
+            applied_filters=filters,
+            filtered_df=filtered_df,
+            location_counts=location_counts,
+            failure_counts=failure_counts,
+            coach_codes=coach_codes,
+            reason_counts=reason_counts,
+            current_date=datetime.now().strftime("%B %d, %Y %I:%M %p"),
+            insights=insights
+        )
+
+    except Exception as e:
+        return render_template("error.html", message=f"Error occurred: {str(e)}")
+```
+
+### Changes in the Flask Route
+1. **Chart Data Validation**:
+   - Ensured `labels` and `data` are empty lists (`[]`) if counts are empty, preventing `None` or `Undefined` values.
+   - Example: `labels: failure_counts.index.tolist() if not failure_counts.empty else []`.
+
+2. **Timeline Chart**:
+   - Added checks to ensure `Receipt Date` exists and has valid data before processing.
+   - Handled `pd.to_datetime` errors and checked `date_counts` for emptiness.
+
+3. **Heatmap Chart**:
+   - Only included if `len(filtered_df) > 5` and `cross_data` is not empty.
+   - Ensured `xLabels`, `yLabels`, and `data` are empty lists if `cross_data` is empty.
+
+4. **Summary Tables**:
+   - Provided fallback messages for empty counts to avoid undefined tables.
+
+5. **Logging**:
+   - Retained `print` statements for errors to aid debugging.
+
+### Updated `report.html`
+Below is the updated `report.html` template, which includes the `chartjs-chart-matrix` plugin for the heatmap, conditional chart rendering, and improved error handling.
+
+<xaiArtifact artifact_id="04d2cde2-7342-48da-991e-14642275e5cf" artifact_version_id="fcc1cd0f-e707-4195-82ec-cf3361f7613e" title="report.html" contentType="text/html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Railway Spring Failure Report</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <!-- Chart.js Matrix Plugin -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@2.0.1/dist/chartjs-chart-matrix.min.js"></script>
+    <!-- Custom styles -->
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2c3e50;
+            --accent-color: #e74c3c;
+            --light-color: #ecf0f1;
+            --dark-color: #34495e;
+            --success-color: #2ecc71;
+            --warning-color: #f39c12;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+            border-radius: 0 0 15px 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .report-container {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            border-left: 5px solid var(--primary-color);
+            padding-left: 15px;
+            margin-bottom: 25px;
+            color: var(--secondary-color);
+        }
+        
+        .chart-container {
+            background-color: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            position: relative;
+            height: 400px;
+        }
+        
+        .chart-canvas {
+            max-height: 350px;
+            width: 100%;
+        }
+        
+        .filters-container {
+            background-color: var(--light-color);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .form-control, .form-select {
+            border-radius: 0.5rem;
+            border: 1px solid #ced4da;
+            padding: 0.6rem 1rem;
+            margin-bottom: 1rem;
+            transition: all 0.3s;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+        }
+        
+        .btn-primary {
+            background-color: var(--primary-color);
+            border: none;
+            border-radius: 0.5rem;
+            padding: 0.6rem 1.5rem;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .btn-secondary {
+            background-color: var(--secondary-color);
+            border: none;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #1a252f;
+        }
+        
+        .card {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s;
+            margin-bottom: 25px;
+            overflow: hidden;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        }
+        
+        .card-header {
+            background-color: var(--secondary-color);
+            color: white;
+            font-weight: 500;
+            padding: 15px;
+            border-radius: 10px 10px 0 0 !important;
+        }
+        
+        .card-body {
+            padding: 20px;
+        }
+        
+        .summary-table, .filtered-data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .summary-table th, .filtered-data-table th {
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }
+        
+        .summary-table td, .filtered-data-table td {
+            padding: 10px;
+            border-bottom: 1px solid #f2f2f2;
+        }
+        
+        .summary-table tr:hover, .filtered-data-table tr:hover {
+            background-color: rgba(52, 152, 219, 0.05);
+        }
+        
+        .active-filter-badge {
+            background-color: var(--primary-color);
+            color: white;
+            border-radius: 20px;
+            padding: 5px 12px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            display: inline-block;
+            font-size: 0.85rem;
+        }
+        
+        .back-link {
+            display: block;
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            background-color: var(--light-color);
+            color: var(--dark-color);
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .back-link:hover {
+            background-color: var(--dark-color);
+            color: var(--light-color);
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 20px 0;
+            margin-top: 30px;
+            color: #6c757d;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .filter-reset {
+            cursor: pointer;
+            color: var(--accent-color);
+            margin-left: 5px;
+        }
+        
+        .export-btn {
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .error-message {
+            color: var(--accent-color);
+            font-weight: bold;
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        @media print {
+            .no-print {
+                display: none;
+            }
+            
+            .container {
+                width: 100%;
+                max-width: 100%;
+            }
+            
+            .card {
+                break-inside: avoid;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .chart-container {
+                margin-bottom: 30px;
+            }
+            
+            .card {
+                margin-bottom: 30px;
+            }
+            
+            .export-btn {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+        }
+        
+        /* Collapsible sections */
+        .collapsible-section {
+            transition: all 0.3s ease-out;
+            overflow: hidden;
+        }
+        
+        .collapse-btn {
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: all 0.3s;
+        }
+        
+        .collapse-btn:hover {
+            color: var(--primary-color);
+        }
+        
+        .collapse-btn i {
+            margin-right: 10px;
+            transition: all 0.3s;
+        }
+        
+        .collapse-btn.collapsed i {
+            transform: rotate(-90deg);
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="row">
+                <div class="col-lg-12 text-center">
+                    <h1><i class="fas fa-chart-line me-2"></i>Railway Spring Failure Analysis</h1>
+                    <p class="lead">Comprehensive reports and analytics on coach spring failures</p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Filters Section -->
+        <div class="filters-container no-print">
+            <div class="row">
+                <div class="col-md-8">
+                    <h3 class="section-title">Filter Data</h3>
+                </div>
+                <div class="col-md-4 text-end">
+                    <button class="btn btn-outline-secondary" onclick="resetAllFilters()" aria-label="Reset all filters">
+                        <i class="fas fa-sync-alt me-1"></i>Reset All Filters
+                    </button>
+                </div>
+            </div>
+            
+            <form id="filterForm" action="/report" method="GET">
+                <div class="row">
+                    {% for column in dropdown_options.keys() %}
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="{{ column.replace(' ', '_') }}" class="form-label">{{ column }}</label>
+                                <select id="{{ column.replace(' ', '_') }}" name="{{ column.replace(' ', '_') }}" class="form-select" aria-label="Filter by {{ column }}">
+                                    <option value="">All {{ column }}</option>
+                                    {% for option in dropdown_options[column] %}
+                                        <option value="{{ option }}" {% if applied_filters.get(column) == option %}selected{% endif %}>{{ option }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <div class="row">
+                    <div class="col-12 text-end">
+                        <button type="submit" class="btn btn-primary" aria-label="Apply filters">
+                            <i class="fas fa-filter me-1"></i>Apply Filters
+                        </button>
+                    </div>
+                </div>
+            </form>
+            
+            <!-- Active Filters Display -->
+            {% if applied_filters %}
+                <div class="mt-4" id="activeFiltersContainer">
+                    <h5>Active Filters:</h5>
+                    <div class="active-filters" id="activeFilters">
+                        {% for column, value in applied_filters.items() %}
+                            <span class="active-filter-badge" data-column="{{ column.replace(' ', '_') }}">{{ column }}: {{ value }} <span class="filter-reset" data-filter="{{ column.replace(' ', '_') }}">×</span></span>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% else %}
+                <div class="mt-4" id="activeFiltersContainer" style="display: none;">
+                    <h5>Active Filters:</h5>
+                    <div class="active-filters" id="activeFilters"></div>
+                </div>
+            {% endif %}
+        </div>
+        
+        <!-- Export Options Section -->
+        <div class="export-container no-print">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h3 class="section-title m-0">Export & Print Options</h3>
+            </div>
+            <div class="row">
+                <div class="col-md-12">
+                    <button class="btn btn-outline-primary export-btn" onclick="window.print()" aria-label="Print report">
+                        <i class="fas fa-print me-1"></i>Print Report
+                    </button>
+                    <button class="btn btn-outline-info export-btn" onclick="exportReport('csv')" aria-label="Export as CSV">
+                        <i class="fas fa-file-csv me-1"></i>Export as CSV
+                    </button>
+                    <button class="btn btn-outline-success export-btn" onclick="exportReport('xlsx')" aria-label="Export as Excel">
+                        <i class="fas fa-file-excel me-1"></i>Export as Excel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary Cards Section -->
+        <div class="row mb-4">
+            <div class="col-md-3 col-sm-6">
+                <div class="card bg-primary text-white">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="fas fa-exclamation-triangle me-1"></i>Total Failures</h5>
+                        <h2 class="display-4" id="totalFailures">{{ filtered_df.shape[0] if not filtered_df.empty else 0 }}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="card bg-warning text-white">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="fas fa-map-marker-alt me-1"></i>Locations</h5>
+                        <h2 class="display-4" id="uniqueLocations">{{ location_counts.shape[0] if not location_counts.empty else 0 }}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="fas fa-cogs me-1"></i>Failure Types</h5>
+                        <h2 class="display-4" id="failureTypes">{{ failure_counts.shape[0] if not failure_counts.empty else 0 }}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="card bg-danger text-white">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="fas fa-train me-1"></i>Coach Codes</h5>
+                        <h2 class="display-4" id="coachTypes">{{ coach_codes.shape[0] if not coach_codes.empty else 0 }}</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="report-container">
+            <div class="collapse-btn" data-bs-toggle="collapse" data-bs-target="#chartsSection" aria-expanded="true" aria-controls="chartsSection" aria-label="Toggle charts section">
+                <i class="fas fa-chevron-down"></i>
+                <span class="section-title">Visualization Charts</span>
+            </div>
+            
+            <div id="chartsSection" class="collapse show collapsible-section">
+                <div class="row mt-4">
+                    {% for chart_id, chart in charts.items() %}
+                        {% if chart.labels and chart.data %}
+                            <div class="{% if chart_id == 'failure_types' or chart_id == 'location_distribution' %}col-md-6{% else %}col-md-12{% endif %}">
+                                <div class="chart-container">
+                                    <h4 class="text-center mb-3">{{ chart.title }}</h4>
+                                    <canvas id="{{ chart_id }}" class="chart-canvas" aria-label="{{ chart.title }} Chart"></canvas>
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="col-md-12">
+                                <p class="error-message">No data available for {{ chart.title }}.</p>
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary Tables Section -->
+        <div class="report-container">
+            <div class="collapse-btn" data-bs-toggle="collapse" data-bs-target="#tablesSection" aria-expanded="true" aria-controls="tablesSection" aria-label="Toggle summary tables section">
+                <i class="fas fa-chevron-down"></i>
+                <span class="section-title">Summary Tables</span>
+            </div>
+            
+            <div id="tablesSection" class="collapse show collapsible-section">
+                <div class="row mt-4">
+                    {% for table_id, table_html in summary_tables.items() %}
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-{% if table_id == 'failure_types' %}exclamation-triangle{% elif table_id == 'locations' %}map-marker-alt{% else %}question-circle{% endif %} me-1"></i>{{ table_id.replace('_', ' ').title() }}
+                                </div>
+                                <div class="card-body">
+                                    {{ table_html | safe }}
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Data Table Section -->
+        <div class="report-container">
+            <div class="collapse-btn collapsed" data-bs-toggle="collapse" data-bs-target="#detailedDataSection" aria-expanded="false" aria-controls="detailedDataSection" aria-label="Toggle detailed data section">
+                <i class="fas fa-chevron-down"></i>
+                <span class="section-title">Detailed Data</span>
+            </div>
+            
+            <div id="detailedDataSection" class="collapse collapsible-section">
+                <div class="data-table-toggle text-end no-print">
+                    <button class="btn btn-outline-secondary" onclick="exportReport('csv')" aria-label="Download detailed data as CSV">
+                        <i class="fas fa-download me-1"></i>Download as CSV
+                    </button>
+                </div>
+                
+                <div class="table-responsive">
+                    {{ filtered_table_html | safe }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Insights and Recommendations Section -->
+        <div class="report-container">
+            <div class="collapse-btn" data-bs-toggle="collapse" data-bs-target="#insightsSection" aria-expanded="true" aria-controls="insightsSection" aria-label="Toggle insights section">
+                <i class="fas fa-chevron-down"></i>
+                <span class="section-title">Insights & Recommendations</span>
+            </div>
+            
+            <div id="insightsSection" class="collapse show collapsible-section">
+                <div class="row mt-4">
+                    <div class="col-md-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-lightbulb me-1"></i>Key Insights
+                            </div>
+                            <div class="card-body">
+                                <p>Based on the data analysis, the following key insights have been identified:</p>
+                                <ul class="insights-list">
+                                    <li>Most common failure type is <strong>{{ insights.common_failure }}</strong></li>
+                                    <li>Predominant location for failures is <strong>{{ insights.common_location }}</strong></li>
+                                    <li>Top reason for failure is <strong>{{ insights.common_reason }}</strong></li>
+                                    <li>Filtered data represents <strong>{{ insights.failure_percentage }}%</strong> of total records</li>
+                                    <li>Most affected coach code is <strong>{{ insights.top_coach_code }}</strong></li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <div class="card mt-4">
+                            <div class="card-header">
+                                <i class="fas fa-clipboard-list me-1"></i>Recommendations
+                            </div>
+                            <div class="card-body">
+                                <p>Based on the analysis of failure data, the following recommendations are suggested:</p>
+                                <ol class="recommendations-list">
+                                    <li>Increase inspection frequency at <strong>{{ insights.common_location }}</strong></li>
+                                    <li>Review manufacturing for <strong>{{ insights.common_failure }}</strong> failure types</li>
+                                    <li>Conduct additional testing for springs in <strong>{{ insights.top_coach_code }}</strong> coaches</li>
+                                    <li>Implement preventive maintenance to address <strong>{{ insights.common_reason }}</strong></li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Back to Main Page Link -->
+        <a href="/" class="back-link no-print" aria-label="Back to data entry page">
+            <i class="fas fa-arrow-left me-2"></i>Back to Data Entry
+        </a>
+
+        <footer class="footer">
+            <p>Railway Spring Failure Management System © 2025</p>
+            <p class="small text-muted">Report generated on <span id="report-date">{{ current_date }}</span></p>
+        </footer>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Custom JS -->
+    <script>
+        // Log charts data for debugging
+        console.log('Charts data:', {{ charts | tojson }});
+
+        // Initialize charts
+        {% for chart_id, chart in charts.items() %}
+            {% if chart.labels and chart.data %}
+                const ctx_{{ chart_id }} = document.getElementById('{{ chart_id }}').getContext('2d');
+                new Chart(ctx_{{ chart_id }}, {
+                    type: '{{ chart.type }}',
+                    data: {
+                        {% if chart.type == 'matrix' %}
+                            datasets: [{
+                                label: '{{ chart.title }}',
+                                data: (() => {
+                                    const data = [];
+                                    for (let i = 0; i < {{ chart.yLabels | tojson }}.length; i++) {
+                                        for (let j = 0; j < {{ chart.xLabels | tojson }}.length; j++) {
+                                            data.push({
+                                                x: j,
+                                                y: i,
+                                                v: {{ chart.data | tojson }}[i][j]
+                                            });
+                                        }
+                                    }
+                                    return data;
+                                })(),
+                                backgroundColor: (context) => {
+                                    const value = context.dataset.data[context.dataIndex].v;
+                                    const maxValue = Math.max(...{{ chart.data | tojson }}.flat());
+                                    const normalized = value / maxValue;
+                                    return `rgba(54, 162, 235, ${0.3 + normalized * 0.7})`;
+                                },
+                                width: ({chart}) => (chart.chartArea.width / {{ chart.xLabels | tojson }}.length) - 2,
+                                height: ({chart}) => (chart.chartArea.height / {{ chart.yLabels | tojson }}.length) - 2,
+                                borderWidth: 1,
+                                borderColor: 'white'
+                            }],
+                            labels: {{ chart.xLabels | tojson }}
+                        {% else %}
+                            labels: {{ chart.labels | tojson }},
+                            datasets: [{
+                                label: '{{ chart.title }}',
+                                data: {{ chart.data | tojson }},
+                                backgroundColor: [
+                                    'rgba(255, 99, 132, 0.7)',
+                                    'rgba(54, 162, 235, 0.7)',
+                                    'rgba(255, 206, 86, 0.7)',
+                                    'rgba(75, 192, 192, 0.7)',
+                                    'rgba(153, 102, 255, 0.7)',
+                                    'rgba(255, 159, 64, 0.7)',
+                                    'rgba(199, 199, 199, 0.7)'
+                                ],
+                                borderColor: [
+                                    'rgba(255, 99, 132, 1)',
+                                    'rgba(54, 162, 235, 1)',
+                                    'rgba(255, 206, 86, 1)',
+                                    'rgba(75, 192, 192, 1)',
+                                    'rgba(153, 102, 255, 1)',
+                                    'rgba(255, 159, 64, 1)',
+                                    'rgba(199, 199, 199, 1)'
+                                ],
+                                borderWidth: 1
+                            }]
+                        {% endif %}
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: '{{ chart.type }}' !== 'matrix',
+                                position: 'right'
+                            },
+                            title: {
+                                display: false,
+                                text: '{{ chart.title }}'
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const label = context.label || context.dataset.label || '';
+                                        const value = context.raw || context.dataset.data[context.dataIndex].v || 0;
+                                        return `${label}: ${value}`;
+                                    }
+                                }
+                            }
+                        },
+                        {% if chart.type == 'bar' and chart.horizontal %}
+                            indexAxis: 'y',
+                        {% endif %}
+                        {% if chart.type == 'matrix' %}
+                            scales: {
+                                x: {
+                                    title: { display: true, text: 'Type of Failure' },
+                                    ticks: {
+                                        autoSkip: false,
+                                        maxRotation: 45,
+                                        minRotation: 45,
+                                        callback: function(value) {
+                                            return {{ chart.xLabels | tojson }}[value] || '';
+                                        }
+                                    }
+                                },
+                                y: {
+                                    title: { display: true, text: 'Coach Code' },
+                                    ticks: {
+                                        autoSkip: false,
+                                        callback: function(value) {
+                                            return {{ chart.yLabels | tojson }}[value] || '';
+                                        }
+                                    }
+                                }
+                            }
+                        {% endif %}
+                    }
+                });
+            {% endif %}
+        {% endfor %}
+
+        // Export Report
+        function exportReport(format) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('format', format);
+            window.location.href = '/export_report?' + url.searchParams.toString();
+        }
+
+        // Reset All Filters
+        function resetAllFilters() {
+            const form = document.getElementById('filterForm');
+            form.reset();
+            form.submit();
+        }
+
+        // Reset Individual Filter
+        document.querySelectorAll('.filter-reset').forEach(button => {
+            button.addEventListener('click', function() {
+                const filterId = this.getAttribute('data-filter');
+                const select = document.getElementById(filterId);
+                if (select) {
+                    select.value = '';
+                    document.getElementById('filterForm').submit();
+                }
+            });
+        });
+
+        // Update Active Filters Display
+        document.getElementById('filterForm').addEventListener('submit', function() {
+            const activeFiltersContainer = document.getElementById('activeFiltersContainer');
+            const hasActiveFilters = Array.from(this.querySelectorAll('select')).some(select => select.value !== '');
+            activeFiltersContainer.style.display = hasActiveFilters ? 'block' : 'none';
+        });
+    </script>
+</body>
+</html>
